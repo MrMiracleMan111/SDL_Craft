@@ -1,5 +1,6 @@
-#include <GL/glew.h>
-#include <GLFW/glfw3.h>
+#include <SDL2/SDL.h>
+#include <GLES2/gl2.h>
+#include <GLES2/gl2ext.h>
 #include <curl/curl.h>
 #include <math.h>
 #include <stdio.h>
@@ -116,7 +117,7 @@ typedef struct {
 } Attrib;
 
 typedef struct {
-    GLFWwindow *window;
+    SDL_Window *window;
     Worker workers[WORKERS];
     Chunk chunks[MAX_CHUNKS];
     int chunk_count;
@@ -165,7 +166,7 @@ float time_of_day() {
         return 0.5;
     }
     float t;
-    t = glfwGetTime();
+    t = (double)(SDL_GetTicks()) / 1000.0;
     t = t / g->day_length;
     t = t - (int)t;
     return t;
@@ -186,8 +187,8 @@ float get_daylight() {
 int get_scale_factor() {
     int window_width, window_height;
     int buffer_width, buffer_height;
-    glfwGetWindowSize(g->window, &window_width, &window_height);
-    glfwGetFramebufferSize(g->window, &buffer_width, &buffer_height);
+    SDL_GetWindowSize(g->window, &window_width, &window_height);
+    SDL_GL_GetDrawableSize(g->window, &buffer_width, &buffer_height);
     int result = buffer_width / window_width;
     result = MAX(1, result);
     result = MIN(2, result);
@@ -426,7 +427,7 @@ void update_player(Player *player,
         State *s2 = &player->state2;
         memcpy(s1, s2, sizeof(State));
         s2->x = x; s2->y = y; s2->z = z; s2->rx = rx; s2->ry = ry;
-        s2->t = glfwGetTime();
+        s2->t = (double)(SDL_GetTicks()) / 1000.0;
         if (s2->rx - s1->rx > PI) {
             s1->rx += 2 * PI;
         }
@@ -446,7 +447,7 @@ void interpolate_player(Player *player) {
     State *s1 = &player->state1;
     State *s2 = &player->state2;
     float t1 = s2->t - s1->t;
-    float t2 = glfwGetTime() - s2->t;
+    float t2 = ((double)(SDL_GetTicks()) / 1000.0) - s2->t;
     t1 = MIN(t1, 1);
     t1 = MAX(t1, 0.1);
     float p = MIN(t2 / t1, 1);
@@ -2174,7 +2175,7 @@ void on_middle_click() {
     }
 }
 
-void on_key(GLFWwindow *window, int key, int scancode, int action, int mods) {
+void on_key(SDL_Window *window, int key, int scancode, int action, int mods) {
     int control = mods & (GLFW_MOD_CONTROL | GLFW_MOD_SUPER);
     int exclusive =
         glfwGetInputMode(window, GLFW_CURSOR) == GLFW_CURSOR_DISABLED;
@@ -2236,7 +2237,7 @@ void on_key(GLFWwindow *window, int key, int scancode, int action, int mods) {
         }
     }
     if (control && key == 'V') {
-        const char *buffer = glfwGetClipboardString(window);
+        const char *buffer = SDL_GetClipboardText();
         if (g->typing) {
             g->suppress_char = 1;
             strncat(g->typing_buffer, buffer,
@@ -2274,7 +2275,7 @@ void on_key(GLFWwindow *window, int key, int scancode, int action, int mods) {
     }
 }
 
-void on_char(GLFWwindow *window, unsigned int u) {
+void on_char(SDL_Window *window, unsigned int u) {
     if (g->suppress_char) {
         g->suppress_char = 0;
         return;
@@ -2307,7 +2308,7 @@ void on_char(GLFWwindow *window, unsigned int u) {
     }
 }
 
-void on_scroll(GLFWwindow *window, double xdelta, double ydelta) {
+void on_scroll(SDL_Window *window, double xdelta, double ydelta) {
     static double ypos = 0;
     ypos += ydelta;
     if (ypos < -SCROLL_THRESHOLD) {
@@ -2323,7 +2324,7 @@ void on_scroll(GLFWwindow *window, double xdelta, double ydelta) {
     }
 }
 
-void on_mouse_button(GLFWwindow *window, int button, int action, int mods) {
+void on_mouse_button(SDL_Window *window, int button, int action, int mods) {
     int control = mods & (GLFW_MOD_CONTROL | GLFW_MOD_SUPER);
     int exclusive =
         glfwGetInputMode(window, GLFW_CURSOR) == GLFW_CURSOR_DISABLED;
@@ -2361,18 +2362,32 @@ void on_mouse_button(GLFWwindow *window, int button, int action, int mods) {
 }
 
 void create_window() {
-    int window_width = WINDOW_WIDTH;
-    int window_height = WINDOW_HEIGHT;
-    GLFWmonitor *monitor = NULL;
-    if (FULLSCREEN) {
-        int mode_count;
-        monitor = glfwGetPrimaryMonitor();
-        const GLFWvidmode *modes = glfwGetVideoModes(monitor, &mode_count);
-        window_width = modes[mode_count - 1].width;
-        window_height = modes[mode_count - 1].height;
-    }
-    g->window = glfwCreateWindow(
-        window_width, window_height, "Craft", monitor, NULL);
+    // int window_width = WINDOW_WIDTH;
+    // int window_height = WINDOW_HEIGHT;
+    // GLFWmonitor *monitor = NULL;
+    // if (FULLSCREEN) {
+    //     int mode_count;
+    //     monitor = glfwGetPrimaryMonitor();
+    //     const GLFWvidmode *modes = glfwGetVideoModes(monitor, &mode_count);
+    //     window_width = modes[mode_count - 1].width;
+    //     window_height = modes[mode_count - 1].height;
+    // }
+
+    #ifdef USE_KMSDRM
+	g->window = SDL_CreateWindow("Hello World",
+							  0, 0, WIN_WIDTH, WIN_HEIGHT,
+							  SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN);
+	#else
+	g->window = SDL_CreateWindow("Craft",
+							  SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_WIDTH, WINDOW_HEIGHT,
+							  SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
+	#endif
+	
+	SDL_GL_CreateContext(g->window);
+
+
+    // g->window = glfwCreateWindow(
+    //     window_width, window_height, "Craft", monitor, NULL);
 }
 
 void handle_mouse_input() {
@@ -2590,12 +2605,33 @@ int main(int argc, char **argv) {
     rand();
 
     // WINDOW INITIALIZATION //
-    if (!glfwInit()) {
-        return -1;
-    }
+    // if (!glfwInit()) {
+    //     return -1;
+    // }
+
+    #ifdef USE_KMSDRM
+        SDL_setenv("SDL_VIDEODRIVER", "KMSDRM", 1);
+    #endif
+	// Set the log priority for all categories to verbose
+	// SDL_LogSetAllPriority(SDL_LOG_PRIORITY_VERBOSE);
+
+	if (SDL_Init(SDL_INIT_VIDEO) != 0)
+	{
+		SDL_Log("Unable to initialize SDL: %s", SDL_GetError());
+		return 1;
+	}
+
+    // Set OpenGL ES version to 2.0
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+
+	SDL_ShowCursor(SDL_DISABLE);
+	SDL_GL_SetSwapInterval(1);
+
     create_window();
     if (!g->window) {
-        glfwTerminate();
+        SDL_Quit();
         return -1;
     }
 
@@ -2607,9 +2643,9 @@ int main(int argc, char **argv) {
     glfwSetMouseButtonCallback(g->window, on_mouse_button);
     glfwSetScrollCallback(g->window, on_scroll);
 
-    if (glewInit() != GLEW_OK) {
-        return -1;
-    }
+    // if (glewInit() != GLEW_OK) {
+    //     return -1;
+    // }
 
     glEnable(GL_CULL_FACE);
     glEnable(GL_DEPTH_TEST);
@@ -2753,8 +2789,8 @@ int main(int argc, char **argv) {
         // LOCAL VARIABLES //
         reset_model();
         FPS fps = {0, 0, 0};
-        double last_commit = glfwGetTime();
-        double last_update = glfwGetTime();
+        double last_commit = (double)(SDL_GetTicks()) / 1000.0;
+        double last_update = (double)(SDL_GetTicks()) / 1000.0;
         GLuint sky_buffer = gen_sky_buffer();
 
         Player *me = g->players;
@@ -2772,22 +2808,22 @@ int main(int argc, char **argv) {
         }
 
         // BEGIN MAIN LOOP //
-        double previous = glfwGetTime();
+        double previous = (double)(SDL_GetTicks()) / 1000.0;
         while (1) {
             // WINDOW SIZE AND SCALE //
             g->scale = get_scale_factor();
-            glfwGetFramebufferSize(g->window, &g->width, &g->height);
+            SDL_GL_GetDrawableSize(g->window, &g->width, &g->height);
             glViewport(0, 0, g->width, g->height);
 
             // FRAME RATE //
             if (g->time_changed) {
                 g->time_changed = 0;
-                last_commit = glfwGetTime();
-                last_update = glfwGetTime();
+                last_commit = (double)(SDL_GetTicks()) / 1000.0;
+                last_update = (double)(SDL_GetTicks()) / 1000.0;
                 memset(&fps, 0, sizeof(fps));
             }
             update_fps(&fps);
-            double now = glfwGetTime();
+            double now = (double)(SDL_GetTicks()) / 1000.0;
             double dt = now - previous;
             dt = MIN(dt, 0.2);
             dt = MAX(dt, 0.0);
@@ -2934,7 +2970,7 @@ int main(int argc, char **argv) {
             }
 
             // SWAP AND POLL //
-            glfwSwapBuffers(g->window);
+            SDL_GL_SwapWindow(g->window);
             glfwPollEvents();
             if (glfwWindowShouldClose(g->window)) {
                 running = 0;
@@ -2957,7 +2993,7 @@ int main(int argc, char **argv) {
         delete_all_players();
     }
 
-    glfwTerminate();
+    SDL_Quit();
     curl_global_cleanup();
     return 0;
 }
