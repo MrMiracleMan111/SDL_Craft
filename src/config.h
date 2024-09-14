@@ -1,11 +1,12 @@
 #ifndef _config_h_
 #define _config_h_
+#include <SDL2/SDL.h>
 
 // app parameters
 #define DEBUG 0
 #define FULLSCREEN 0
-#define WINDOW_WIDTH 1024
-#define WINDOW_HEIGHT 768
+#define WINDOW_WIDTH 240
+#define WINDOW_HEIGHT 320
 #define VSYNC 1
 #define SCROLL_THRESHOLD 0.1
 #define MAX_MESSAGES 4
@@ -31,13 +32,13 @@
 #define CRAFT_KEY_BACKWARD 'S'
 #define CRAFT_KEY_LEFT 'A'
 #define CRAFT_KEY_RIGHT 'D'
-#define CRAFT_KEY_JUMP GLFW_KEY_SPACE
-#define CRAFT_KEY_FLY GLFW_KEY_TAB
+#define CRAFT_KEY_JUMP SDL_SCANCODE_SPACE
+#define CRAFT_KEY_FLY SDL_SCANCODE_TAB
 #define CRAFT_KEY_OBSERVE 'O'
 #define CRAFT_KEY_OBSERVE_INSET 'P'
 #define CRAFT_KEY_ITEM_NEXT 'E'
 #define CRAFT_KEY_ITEM_PREV 'R'
-#define CRAFT_KEY_ZOOM GLFW_KEY_LEFT_SHIFT
+#define CRAFT_KEY_ZOOM SDL_SCANCODE_LSHIFT
 #define CRAFT_KEY_ORTHO 'F'
 #define CRAFT_KEY_CHAT 't'
 #define CRAFT_KEY_COMMAND '/'
@@ -45,7 +46,7 @@
 
 // advanced parameters
 #define CREATE_CHUNK_RADIUS 10
-#define RENDER_CHUNK_RADIUS 10
+#define RENDER_CHUNK_RADIUS 4
 #define RENDER_SIGN_RADIUS 4
 #define DELETE_CHUNK_RADIUS 14
 #define CHUNK_SIZE 32

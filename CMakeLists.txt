@@ -4,6 +4,18 @@ project(craft)
 
 FILE(GLOB SOURCE_FILES src/*.c)
 
+if (ARM_ARCADE)
+    set(USE_KMSDRM 1)
+    list(APPEND CMAKE_PREFIX_PATH "/home/jack/Desktop/ArcadeDeviceProjects/CompilerTools/usr/lib")
+    list(APPEND CMAKE_PREFIX_PATH "/home/jack/Desktop/ArcadeDeviceProjects/CompilerTools/lib")
+    set(CMAKE_LIBRARY_PATH ${CMAKE_LIBRARY_PATH} "/home/jack/Desktop/ArcadeDeviceProjects/CompilerTools/usr/lib")
+    set(CMAKE_LIBRARY_PATH ${CMAKE_LIBRARY_PATH} "/home/jack/Desktop/ArcadeDeviceProjects/CompilerTools/lib")
+    set(CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS} -pthread")
+    set(SDL_PATH /home/jack/Desktop/ArcadeDeviceProjects/CompilerTools/usr/lib/libSDL2.so)
+    link_directories("/home/jack/Desktop/ArcadeDeviceProjects/CompilerTools/usr/lib")
+    link_directories("/home/jack/Desktop/ArcadeDeviceProjects/CompilerTools/usr")
+endif()
+
 add_executable(
     craft
     ${SOURCE_FILES}
@@ -13,10 +25,15 @@ add_executable(
     deps/tinycthread/tinycthread.c)
 
 add_definitions(-std=c99 -O3)
+include_directories(~/Desktop/ArcadeDeviceProjects/CompilerTools/include)
 include_directories(deps/lodepng)
 include_directories(deps/noise)
 include_directories(deps/sqlite)
 include_directories(deps/tinycthread)
+
+if (ARM_ARCADE)
+    target_link_libraries(craft PUBLIC ${SDL2_LIBRARY})
+endif()
 
 if(MINGW)
     set(CMAKE_LIBRARY_PATH ${CMAKE_LIBRARY_PATH}
@@ -25,20 +42,25 @@ if(MINGW)
         "C:/Program Files/CURL/include" "C:/Program Files (x86)/CURL/include")
 endif()
 
-find_package(CURL REQUIRED)
-include_directories(${CURL_INCLUDE_DIR})
+if (ARM_ARCADE)
+    find_package(CURL REQUIRED)
+    include_directories(${CURL_INCLUDE_DIR})
+endif()
 
 if(APPLE)
-    target_link_libraries(craft dl sdl2 GL SDL2main SDL2 m
+    target_link_libraries(craft dl pthread GLESv2 SDL2 m
 ${CURL_LIBRARIES})
 endif()
 
 if(UNIX)
-    target_link_libraries(craft dl sdl2 GL SDL2main SDL2 m
-       ${CURL_LIBRARIES})
+    if (ARM_ARCADE)
+        target_link_libraries(craft dl pthread drm xkbcommon pixman-1 ffi wayland-client wayland-server gbm mali-utgard-400-r7p0-r1p1-wayland GLESv2 SDL2 m ${CURL_LIBRARIES})
+    else()
+        target_link_libraries(craft dl pthread SDL2 GL m -lcurl)
+    endif()
 endif()
 
 if(MINGW)
-    target_link_libraries(craft ws2_32.lib dl sdl2 GL SDL2main SDL2 m
+    target_link_libraries(craft ws2_32.lib dl pthread GLESv2 SDL2 m
        ${CURL_LIBRARIES})
 endif()

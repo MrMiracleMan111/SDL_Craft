@@ -118,6 +118,7 @@ typedef struct {
 
 typedef struct {
     SDL_Window *window;
+    SDL_GLContext context;
     Worker workers[WORKERS];
     Chunk chunks[MAX_CHUNKS];
     int chunk_count;
@@ -156,6 +157,21 @@ typedef struct {
 
 static Model model;
 static Model *g = &model;
+
+static const Uint8 *keyboard_state;
+
+static GLenum debug_err;
+
+/* Helper Methods */
+static void printGLError()
+{
+	debug_err = glGetError();
+	if (debug_err != GL_NO_ERROR)
+	{
+		printf("OpenGL Error: %x\n", debug_err);
+	}
+	debug_err = GL_NO_ERROR;
+}
 
 int chunked(float x) {
     return floorf(roundf(x) / CHUNK_SIZE);
@@ -1743,12 +1759,12 @@ void render_wireframe(Attrib *attrib, Player *player) {
     if (is_obstacle(hw)) {
         glUseProgram(attrib->program);
         glLineWidth(1);
-        glEnable(GL_COLOR_LOGIC_OP);
+        // glEnable(GL_COLOR_LOGIC_OP);
         glUniformMatrix4fv(attrib->matrix, 1, GL_FALSE, matrix);
         GLuint wireframe_buffer = gen_wireframe_buffer(hx, hy, hz, 0.53);
         draw_lines(attrib, wireframe_buffer, 3, 24);
         del_buffer(wireframe_buffer);
-        glDisable(GL_COLOR_LOGIC_OP);
+        // glDisable(GL_COLOR_LOGIC_OP);
     }
 }
 
@@ -1757,12 +1773,12 @@ void render_crosshairs(Attrib *attrib) {
     set_matrix_2d(matrix, g->width, g->height);
     glUseProgram(attrib->program);
     glLineWidth(4 * g->scale);
-    glEnable(GL_COLOR_LOGIC_OP);
+    // glEnable(GL_COLOR_LOGIC_OP);
     glUniformMatrix4fv(attrib->matrix, 1, GL_FALSE, matrix);
     GLuint crosshair_buffer = gen_crosshair_buffer();
     draw_lines(attrib, crosshair_buffer, 2, 4);
     del_buffer(crosshair_buffer);
-    glDisable(GL_COLOR_LOGIC_OP);
+    // glDisable(GL_COLOR_LOGIC_OP);
 }
 
 void render_item(Attrib *attrib) {
@@ -2176,13 +2192,12 @@ void on_middle_click() {
 }
 
 void on_key(SDL_Window *window, int key, int scancode, int action, int mods) {
-    int control = mods & (GLFW_MOD_CONTROL | GLFW_MOD_SUPER);
-    int exclusive =
-        glfwGetInputMode(window, GLFW_CURSOR) == GLFW_CURSOR_DISABLED;
-    if (action == GLFW_RELEASE) {
+    int control = mods & (KMOD_CTRL | KMOD_GUI);
+    int exclusive = SDL_GetRelativeMouseMode() == SDL_TRUE; // Is the mosue in relative mode?
+    if (action == SDL_MOUSEBUTTONUP) {
         return;
     }
-    if (key == GLFW_KEY_BACKSPACE) {
+    if (key == SDLK_BACKSPACE) {
         if (g->typing) {
             int n = strlen(g->typing_buffer);
             if (n > 0) {
@@ -2190,20 +2205,21 @@ void on_key(SDL_Window *window, int key, int scancode, int action, int mods) {
             }
         }
     }
-    if (action != GLFW_PRESS) {
+    if (action != SDL_MOUSEBUTTONDOWN) {
         return;
     }
-    if (key == GLFW_KEY_ESCAPE) {
+    if (key == SDLK_ESCAPE) {
         if (g->typing) {
             g->typing = 0;
         }
         else if (exclusive) {
-            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+            SDL_SetRelativeMouseMode(SDL_FALSE);
         }
+        SDL_SetRelativeMouseMode(SDL_FALSE);
     }
-    if (key == GLFW_KEY_ENTER) {
+    if (key == SDLK_RETURN) {
         if (g->typing) {
-            if (mods & GLFW_MOD_SHIFT) {
+            if (mods & KMOD_SHIFT) {
                 int n = strlen(g->typing_buffer);
                 if (n < MAX_TEXT_LENGTH - 1) {
                     g->typing_buffer[n] = '\r';
@@ -2325,13 +2341,12 @@ void on_scroll(SDL_Window *window, double xdelta, double ydelta) {
 }
 
 void on_mouse_button(SDL_Window *window, int button, int action, int mods) {
-    int control = mods & (GLFW_MOD_CONTROL | GLFW_MOD_SUPER);
-    int exclusive =
-        glfwGetInputMode(window, GLFW_CURSOR) == GLFW_CURSOR_DISABLED;
-    if (action != GLFW_PRESS) {
+    int control = mods & (KMOD_CTRL | KMOD_GUI);
+    int exclusive = SDL_GetRelativeMouseMode() == SDL_TRUE; // Is the mosue in relative mode?
+    if (action != SDL_MOUSEBUTTONDOWN) {
         return;
     }
-    if (button == GLFW_MOUSE_BUTTON_LEFT) {
+    if (button == SDL_BUTTON_LEFT) {
         if (exclusive) {
             if (control) {
                 on_right_click();
@@ -2341,10 +2356,10 @@ void on_mouse_button(SDL_Window *window, int button, int action, int mods) {
             }
         }
         else {
-            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+            SDL_SetRelativeMouseMode(SDL_TRUE);
         }
     }
-    if (button == GLFW_MOUSE_BUTTON_RIGHT) {
+    if (button == SDL_BUTTON_RIGHT) {
         if (exclusive) {
             if (control) {
                 on_light();
@@ -2354,7 +2369,7 @@ void on_mouse_button(SDL_Window *window, int button, int action, int mods) {
             }
         }
     }
-    if (button == GLFW_MOUSE_BUTTON_MIDDLE) {
+    if (button == SDL_BUTTON_MIDDLE) {
         if (exclusive) {
             on_middle_click();
         }
@@ -2375,7 +2390,7 @@ void create_window() {
 
     #ifdef USE_KMSDRM
 	g->window = SDL_CreateWindow("Hello World",
-							  0, 0, WIN_WIDTH, WIN_HEIGHT,
+							  0, 0, WINDOW_WIDTH, WINDOW_HEIGHT,
 							  SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN);
 	#else
 	g->window = SDL_CreateWindow("Craft",
@@ -2383,22 +2398,20 @@ void create_window() {
 							  SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
 	#endif
 	
-	SDL_GL_CreateContext(g->window);
-
-
-    // g->window = glfwCreateWindow(
-    //     window_width, window_height, "Craft", monitor, NULL);
+	g->context = SDL_GL_CreateContext(g->window);
 }
 
-void handle_mouse_input() {
-    int exclusive =
-        glfwGetInputMode(g->window, GLFW_CURSOR) == GLFW_CURSOR_DISABLED;
+void handle_mouse_input(SDL_Event *event) {
+    int exclusive = SDL_GetRelativeMouseMode() == SDL_TRUE; // Is the mosue in relative mode?
     static double px = 0;
     static double py = 0;
     State *s = &g->players->state;
     if (exclusive && (px || py)) {
-        double mx, my;
-        glfwGetCursorPos(g->window, &mx, &my);
+        int tmpx, tmpy;
+        float mx, my;
+        SDL_GetMouseState(&tmpx, &tmpy);
+        mx = (float)(tmpx);
+        my = (float)(tmpy);
         float m = 0.0025;
         s->rx += (mx - px) * m;
         if (INVERT_MOUSE) {
@@ -2419,32 +2432,40 @@ void handle_mouse_input() {
         py = my;
     }
     else {
-        glfwGetCursorPos(g->window, &px, &py);
+        int tmpx, tmpy;
+        SDL_GetMouseState(&tmpx, &tmpy);
+        px = (double)(tmpx);
+        py = (double)(tmpy);
     }
 }
 
-void handle_movement(double dt) {
+static Uint8 GetKey(SDL_Window *window, Uint8 scancode, Uint8 *state)
+{
+    return state[scancode];
+}
+
+void handle_movement(double dt, SDL_Event *event) {
     static float dy = 0;
     State *s = &g->players->state;
     int sz = 0;
     int sx = 0;
     if (!g->typing) {
         float m = dt * 1.0;
-        g->ortho = glfwGetKey(g->window, CRAFT_KEY_ORTHO) ? 64 : 0;
-        g->fov = glfwGetKey(g->window, CRAFT_KEY_ZOOM) ? 15 : 65;
-        if (glfwGetKey(g->window, CRAFT_KEY_FORWARD)) sz--;
-        if (glfwGetKey(g->window, CRAFT_KEY_BACKWARD)) sz++;
-        if (glfwGetKey(g->window, CRAFT_KEY_LEFT)) sx--;
-        if (glfwGetKey(g->window, CRAFT_KEY_RIGHT)) sx++;
-        if (glfwGetKey(g->window, GLFW_KEY_LEFT)) s->rx -= m;
-        if (glfwGetKey(g->window, GLFW_KEY_RIGHT)) s->rx += m;
-        if (glfwGetKey(g->window, GLFW_KEY_UP)) s->ry += m;
-        if (glfwGetKey(g->window, GLFW_KEY_DOWN)) s->ry -= m;
+        g->ortho = GetKey(g->window, CRAFT_KEY_ORTHO, keyboard_state) ? 64 : 0;
+        g->fov = GetKey(g->window, CRAFT_KEY_ZOOM, keyboard_state) ? 15 : 65;
+        if (GetKey(g->window, CRAFT_KEY_FORWARD, keyboard_state)) sz--;
+        if (GetKey(g->window, CRAFT_KEY_BACKWARD, keyboard_state)) sz++;
+        if (GetKey(g->window, CRAFT_KEY_LEFT, keyboard_state)) sx--;
+        if (GetKey(g->window, CRAFT_KEY_RIGHT, keyboard_state)) sx++;
+        if (GetKey(g->window, SDL_SCANCODE_LEFT, keyboard_state)) s->rx -= m;
+        if (GetKey(g->window, SDL_SCANCODE_RIGHT, keyboard_state)) s->rx += m;
+        if (GetKey(g->window, SDL_SCANCODE_UP, keyboard_state)) s->ry += m;
+        if (GetKey(g->window, SDL_SCANCODE_DOWN, keyboard_state)) s->ry -= m;
     }
     float vx, vy, vz;
     get_motion_vector(g->flying, sz, sx, s->rx, s->ry, &vx, &vy, &vz);
     if (!g->typing) {
-        if (glfwGetKey(g->window, CRAFT_KEY_JUMP)) {
+        if (GetKey(g->window, CRAFT_KEY_JUMP, keyboard_state)) {
             if (g->flying) {
                 vy = 1;
             }
@@ -2548,7 +2569,7 @@ void parse_buffer(char *buffer) {
         double elapsed;
         int day_length;
         if (sscanf(line, "E,%lf,%d", &elapsed, &day_length) == 2) {
-            glfwSetTime(fmod(elapsed, day_length));
+            // glfwSetTime(fmod(elapsed, day_length));
             g->day_length = day_length;
             g->time_changed = 1;
         }
@@ -2594,7 +2615,7 @@ void reset_model() {
     memset(g->messages, 0, sizeof(char) * MAX_MESSAGES * MAX_TEXT_LENGTH);
     g->message_index = 0;
     g->day_length = DAY_LENGTH;
-    glfwSetTime(g->day_length / 3.0);
+    // glfwSetTime(g->day_length / 3.0);
     g->time_changed = 1;
 }
 
@@ -2604,22 +2625,38 @@ int main(int argc, char **argv) {
     srand(time(NULL));
     rand();
 
-    // WINDOW INITIALIZATION //
-    // if (!glfwInit()) {
-    //     return -1;
-    // }
-
     #ifdef USE_KMSDRM
         SDL_setenv("SDL_VIDEODRIVER", "KMSDRM", 1);
     #endif
 	// Set the log priority for all categories to verbose
 	// SDL_LogSetAllPriority(SDL_LOG_PRIORITY_VERBOSE);
 
+    printf("Initializing!\n");
 	if (SDL_Init(SDL_INIT_VIDEO) != 0)
 	{
 		SDL_Log("Unable to initialize SDL: %s", SDL_GetError());
 		return 1;
 	}
+    SDL_LogSetAllPriority(SDL_LOG_PRIORITY_VERBOSE);
+
+    SDL_Event event;
+
+    printf("Opening Window!\n");
+    create_window();
+    if (!g->window) {
+        printf("SDL WINDOW CLOSE\n");
+        SDL_Quit();
+        return -1;
+    }
+    printf("Window opened!\n");
+
+    printf("Setting up context...\n");
+
+    SDL_GL_MakeCurrent(g->window, g->context);
+    // SDL_GL_SetSwapInterval(VSYNC);
+    printf("Winwdow setup finished!\n");
+    SDL_SetRelativeMouseMode(SDL_TRUE);
+
 
     // Set OpenGL ES version to 2.0
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
@@ -2627,25 +2664,8 @@ int main(int argc, char **argv) {
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
 
 	SDL_ShowCursor(SDL_DISABLE);
-	SDL_GL_SetSwapInterval(1);
 
-    create_window();
-    if (!g->window) {
-        SDL_Quit();
-        return -1;
-    }
-
-    glfwMakeContextCurrent(g->window);
-    glfwSwapInterval(VSYNC);
-    glfwSetInputMode(g->window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-    glfwSetKeyCallback(g->window, on_key);
-    glfwSetCharCallback(g->window, on_char);
-    glfwSetMouseButtonCallback(g->window, on_mouse_button);
-    glfwSetScrollCallback(g->window, on_scroll);
-
-    // if (glewInit() != GLEW_OK) {
-    //     return -1;
-    // }
+    printf("Context Established!\n");
 
     glEnable(GL_CULL_FACE);
     glEnable(GL_DEPTH_TEST);
@@ -2753,6 +2773,7 @@ int main(int argc, char **argv) {
     g->sign_radius = RENDER_SIGN_RADIUS;
 
     // INITIALIZE WORKER THREADS
+    printf("Initializing Threads...\n");
     for (int i = 0; i < WORKERS; i++) {
         Worker *worker = g->workers + i;
         worker->index = i;
@@ -2761,20 +2782,31 @@ int main(int argc, char **argv) {
         cnd_init(&worker->cnd);
         thrd_create(&worker->thrd, worker_run, worker);
     }
+    printf("Threads initialized!\n");
+
+
+    // WINDOW SIZE AND SCALE //
+    g->scale = get_scale_factor();
+    SDL_GL_GetDrawableSize(g->window, &g->width, &g->height);
+    glViewport(0, 0, g->width, g->height);
 
     // OUTER LOOP //
     int running = 1;
     while (running) {
         // DATABASE INITIALIZATION //
         if (g->mode == MODE_OFFLINE || USE_CACHE) {
+            printf("Initializing database...\n");
+
             db_enable();
             if (db_init(g->db_path)) {
+                printf("Database initialization failed\n");
                 return -1;
             }
             if (g->mode == MODE_ONLINE) {
                 // TODO: support proper caching of signs (handle deletions)
                 db_delete_all_signs();
             }
+            printf("Database initialized!\n");
         }
 
         // CLIENT INITIALIZATION //
@@ -2802,6 +2834,10 @@ int main(int argc, char **argv) {
 
         // LOAD STATE FROM DATABASE //
         int loaded = db_load_state(&s->x, &s->y, &s->z, &s->rx, &s->ry);
+
+        //TODO
+        me->state.ry = RADIANS(0);
+
         force_chunks(me);
         if (!loaded) {
             s->y = highest_block(s->x, s->z) + 2;
@@ -2809,11 +2845,7 @@ int main(int argc, char **argv) {
 
         // BEGIN MAIN LOOP //
         double previous = (double)(SDL_GetTicks()) / 1000.0;
-        while (1) {
-            // WINDOW SIZE AND SCALE //
-            g->scale = get_scale_factor();
-            SDL_GL_GetDrawableSize(g->window, &g->width, &g->height);
-            glViewport(0, 0, g->width, g->height);
+        while (SDL_WaitEvent(&event) != 0) {
 
             // FRAME RATE //
             if (g->time_changed) {
@@ -2825,15 +2857,53 @@ int main(int argc, char **argv) {
             update_fps(&fps);
             double now = (double)(SDL_GetTicks()) / 1000.0;
             double dt = now - previous;
+            double xdelta, ydelta;
             dt = MIN(dt, 0.2);
             dt = MAX(dt, 0.0);
             previous = now;
 
-            // HANDLE MOUSE INPUT //
-            handle_mouse_input();
+            keyboard_state = SDL_GetKeyboardState(NULL);
+
+            switch (event.type)
+            {
+                case SDL_MOUSEMOTION:    
+                    // HANDLE MOUSE INPUT //
+                    handle_mouse_input(&event);
+                break;
+
+                case SDL_KEYDOWN:
+                    on_key(g->window, event.key.keysym.sym, event.key.keysym.scancode, event.key.type, event.key.keysym.mod);
+                break;
+
+                case SDL_KEYUP:
+                    on_key(g->window, event.key.keysym.sym, event.key.keysym.scancode, event.key.type, event.key.keysym.mod);
+                break;
+
+                case SDL_MOUSEBUTTONDOWN:
+                    on_mouse_button(g->window, event.button.button, event.button.type, 0);
+                break;
+
+                case SDL_MOUSEBUTTONUP:
+                    on_mouse_button(g->window, event.button.button, event.button.type, 0);
+                break;
+
+
+                case SDL_MOUSEWHEEL:
+                    xdelta = (double)(event.wheel.preciseX);
+                    ydelta = (double)(event.wheel.preciseY);
+                    on_scroll(g->window, xdelta, ydelta);
+                break;
+
+                case SDL_TEXTINPUT:
+                    on_char(g->window, event.text.text[0]);
+                break;
+
+                default:
+                break;
+            }
 
             // HANDLE MOVEMENT //
-            handle_movement(dt);
+            handle_movement(dt, &event);
 
             // HANDLE DATA FROM SERVER //
             char *buffer = client_recv();
@@ -2971,8 +3041,9 @@ int main(int argc, char **argv) {
 
             // SWAP AND POLL //
             SDL_GL_SwapWindow(g->window);
-            glfwPollEvents();
-            if (glfwWindowShouldClose(g->window)) {
+            if (event.type == SDL_QUIT)
+            {
+                printf("SDL WINDOW QUIT\n");
                 running = 0;
                 break;
             }
@@ -2993,6 +3064,7 @@ int main(int argc, char **argv) {
         delete_all_players();
     }
 
+    printf("SDL WINDOW CLOSE\n");
     SDL_Quit();
     curl_global_cleanup();
     return 0;

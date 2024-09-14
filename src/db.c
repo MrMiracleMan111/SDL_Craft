@@ -40,6 +40,7 @@ int db_init(char *path) {
     if (!db_enabled) {
         return 0;
     }
+    printf("Enabling database...\n");
     static const char *create_query =
         "attach database 'auth.db' as auth;"
         "create table if not exists auth.identity_token ("
@@ -145,8 +146,12 @@ int db_init(char *path) {
     if (rc) return rc;
     rc = sqlite3_prepare_v2(db, set_key_query, -1, &set_key_stmt, NULL);
     if (rc) return rc;
+
+    printf("Running sqlite...\n");
     sqlite3_exec(db, "begin;", NULL, NULL, NULL);
+    printf("Starting db worker...\n");
     db_worker_start();
+    printf("DB Worker initialized...\n");
     return 0;
 }
 

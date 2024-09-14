@@ -1,5 +1,6 @@
-#version 120
-
+#version 100
+precision mediump float;
+precision mediump int;
 uniform mat4 matrix;
 uniform vec3 camera;
 uniform float fog_distance;
@@ -34,6 +35,6 @@ void main() {
         fog_factor = pow(clamp(camera_distance / fog_distance, 0.0, 1.0), 4.0);
         float dy = position.y - camera.y;
         float dx = distance(position.xz, camera.xz);
-        fog_height = (atan(dy, dx) + pi / 2) / pi;
+        fog_height = (atan(dy, dx) + pi / 2.0) / pi;
     }
 }
